@@ -29,3 +29,5 @@ build/
 
 ### VS Code ###
 .vscode/
+
+k8s/image-labeller.yaml

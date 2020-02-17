@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: image-labeller
+  name: image-labeller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-labeller
+  template:
+    metadata:
+      labels:
+        app: image-labeller
+    spec:
+      containers:
+        - image: registry.gitlab.com/dickeyf/image-labeller:latest
+          name: image-labeller
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: google-cred
+              mountPath: "/etc/secrets"
+              readOnly: true
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/secrets/google-creds.json"
+      volumes:
+      - name: google-cred
+        secret:
+          secretName: google-vision-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: image-labeller-service
+  labels:
+    app: image-labeller
+spec:
+  selector:
+    app: image-labeller
+  ports:
+    - name: rest
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: google-vision-secret
+type: Opaque
+stringData:
+  google-creds.json: |-
+    # PASTE CREDS HERE
