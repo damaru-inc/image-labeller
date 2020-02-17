@@ -1,0 +1,66 @@
+image: maven:3.6-jdk-13
+
+variables:
+  MAVEN_CLI_OPTS: "--batch-mode"
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+cache:
+  paths:
+    - .m2/repository/
+    - target/
+
+stages:
+  - build
+  - test
+  - package
+  - deploy
+
+before_script:
+  #  - echo `pwd` # debug
+  #  - echo "$CI_BUILD_NAME, $CI_BUILD_REF_NAME $CI_BUILD_STAGE" # debug
+  - export BUILD_TAG=${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}
+  - export VERSION_TAG=${CI_COMMIT_TAG:-$BUILD_TAG}
+
+build:
+  stage: build
+  script:
+    - mvn versions:set -DnewVersion=${VERSION_TAG}
+    - mvn $MAVEN_CLI_OPTS -Dmaven.test.skip=true package
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 week
+
+docker-build:
+  image: docker:stable
+  services:
+    - docker:dind
+  stage: package
+  script:
+    - export JAR_NAME=image-labeller-${VERSION_TAG}
+    - export DOCKER_HOST=tcp://docker:2375/
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build --build-arg JAR_NAME=target/${JAR_NAME} -t ${CI_REGISTRY_IMAGE}:${VERSION_TAG} .
+    - docker push $CI_REGISTRY_IMAGE:${VERSION_TAG}
+
+test:
+  stage: test
+  script:
+    - mvn $MAVEN_CLI_OPTS test
+
+k8s-deploy:
+  image: docker:stable
+  services:
+    - docker:dind
+  stage: deploy
+  script:
+    - export DOCKER_HOST=tcp://docker:2375/
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $CI_REGISTRY_IMAGE:${VERSION_TAG}
+    - docker tag $CI_REGISTRY_IMAGE:${VERSION_TAG} $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+  only:
+    - master
+
+after_script:
+  - echo "End CI"
